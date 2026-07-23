@@ -97,41 +97,37 @@ def _create_mounts(new_root):
 
 
 def _setup_cpu_cgroup(container_id, cpu_shares):
-    CPU_CGROUP_BASEDIR = '/sys/fs/cgroup/cpu'
-    container_cpu_cgroup_dir = os.path.join(
-        CPU_CGROUP_BASEDIR, 'rubber_docker', container_id)
-
-    # Insert the container to new cpu cgroup named 'rubber_docker/container_id'
-    if not os.path.exists(container_cpu_cgroup_dir):
-        os.makedirs(container_cpu_cgroup_dir)
-    tasks_file = os.path.join(container_cpu_cgroup_dir, 'tasks')
-    open(tasks_file, 'w').write(str(os.getpid()))
-
-    # If (cpu_shares != 0)  => set the 'cpu.shares' in our cpu cgroup
-    if cpu_shares:
-        cpu_shares_file = os.path.join(container_cpu_cgroup_dir, 'cpu.shares')
-        open(cpu_shares_file, 'w').write(str(cpu_shares))
-
+    base_cgroup = '/sys/fs/cgroup/rubber_docker'
+    
+    with open(os.path.join(base_cgroup, 'cgroup.subtree_control'), 'w') as f:
+        f.write('+cpu +memory')
+    cgroup_path = '/sys/fs/cgroup/rubber_docker/' + container_id
+    os.makedirs(cgroup_path, exist_ok=True)
+    if cpu_shares != 0:
+        weight = max(1, min(10000, int(cpu_shares / 1024 * 100)))
+        with open(os.path.join(cgroup_path, 'cpu.weight'), 'w') as f:
+            f.write(str(weight))
+    with open(os.path.join(cgroup_path, 'cgroup.procs'), 'w') as f:
+        f.write('0')
 
 def _setup_memory_cgroup(container_id, memory, memory_swap):
-    MEMORY_CGROUP_BASEDIR = '/sys/fs/cgroup/memory'
-    container_mem_cgroup_dir = os.path.join(
-        MEMORY_CGROUP_BASEDIR, 'rubber_docker', container_id)
-
-    # Insert the container to new memory cgroup named 'rubber_docker/container_id'
-    if not os.path.exists(container_mem_cgroup_dir):
-        os.makedirs(container_mem_cgroup_dir)
-    tasks_file = os.path.join(container_mem_cgroup_dir, 'tasks')
-    open(tasks_file, 'w').write(str(os.getpid()))
+    base = '/sys/fs/cgroup/rubber_docker'
+    os.makedirs(base, exist_ok=True)
+    with open(os.path.join(base, 'cgroup.subtree_control'), 'w') as f:
+        f.write('+cpu +memory')
+    cgroup_path = os.path.join(base, container_id)
+    os.makedirs(cgroup_path, exist_ok=True)
 
     if memory is not None:
-        mem_limit_in_bytes_file = os.path.join(
-            container_mem_cgroup_dir, 'memory.limit_in_bytes')
-        open(mem_limit_in_bytes_file, 'w').write(str(memory))
+        with open(os.path.join(cgroup_path, 'memory.max'), 'w') as f:
+            f.write(str(memory))
+    
     if memory_swap is not None:
-        memsw_limit_in_bytes_file = os.path.join(
-            container_mem_cgroup_dir, 'memory.memsw.limit_in_bytes')
-        open(memsw_limit_in_bytes_file, 'w').write(str(memory_swap))
+        with open(os.path.join(cgroup_path, 'memory.swap.max'), 'w') as f:
+            f.write(str(memory_swap))
+    
+    with open(os.path.join(cgroup_path, 'cgroup.procs'), 'w') as f:
+        f.write('0')
 
 
 def contain(command, image_name, image_dir, container_id, container_dir,
@@ -158,9 +154,13 @@ def contain(command, image_name, image_dir, container_id, container_dir,
     linux.umount2('/old_root', linux.MNT_DETACH)  # umount old root
     os.rmdir('/old_root')  # rmdir the old_root dir
 
-    # TODO: if user is set, drop privileges using os.setuid()
-    #       (and optionally os.setgid()).
-
+    if user:
+        parts = user.split(':')
+        uid = int(parts[0])
+        gid = int(parts[1]) if len(parts) > 1 else uid
+        os.setgid(gid)
+        os.setuid(uid)
+    
     os.execvp(command[0], command)
 
 
