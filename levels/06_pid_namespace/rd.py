@@ -131,20 +131,14 @@ def contain(command, image_name, image_dir, container_id, container_dir):
 def run(image_name, image_dir, container_dir, command):
     container_id = str(uuid.uuid4())
 
-    # TODO: Switching to a new PID namespace (using unshare) would only affect
-    #       the children of a process (because we can't change the PID of a
-    #       running process), so we'll have to unshare here OR replace
-    #       os.fork() with linux.clone()
-
-    pid = os.fork()
-    if pid == 0:
-        # This is the child, we'll try to do some containment here
+    def child(command, image_name, image_dir, container_id, container_dir):
         try:
-            contain(command, image_name, image_dir, container_id,
-                    container_dir)
+            contain(command, image_name, image_dir, container_id, container_dir)
         except Exception:
             traceback.print_exc()
             os._exit(1)  # something went wrong in contain()
+
+    pid = linux.clone(child, linux.CLONE_NEWPID, (command, image_name, image_dir, container_id, container_dir))
 
     # This is the parent, pid contains the PID of the forked process
     # wait for the forked child, fetch the exit status
