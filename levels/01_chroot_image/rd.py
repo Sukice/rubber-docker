@@ -44,7 +44,7 @@ def create_container_root(image_name, image_dir, container_id, container_dir):
     @param image_dir: the directory to lookup image tarballs in
     @param container_id: the unique container id
     @param container_dir: the base directory of newly generated container
-                          directories
+01_chroot_image                          directories
     @retrun: new container root directory
     @rtype: str
     """
@@ -71,10 +71,12 @@ def cli():
 
 
 def contain(command, image_name, image_dir, container_id, container_dir):
-    # TODO: would you like to do something before chrooting?
-    # print('Created a new root fs for our container: {}'.format(new_root))
+    new_root = create_container_root(image_name, image_dir, container_id, container_dir)
+    print('Created a new root fs for our container: {}'.format(new_root))
 
-    # TODO: chroot into new_root
+    os.chroot(new_root)
+    os.chdir('/')
+    linux.mount("proc", "/proc", 'proc', 0, '')
     # TODO: something after chrooting? (HINT: try running: python3 rd.py run -i ubuntu -- /bin/sh)
 
     os.execvp(command[0], command)
