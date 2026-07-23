@@ -97,11 +97,19 @@ def _create_mounts(new_root):
 
 def contain(command, image_name, image_dir, container_id, container_dir,
             cpu_shares):
-    # TODO: insert the container to a new cpu cgroup named:
-    #       'rubber_docker/container_id'
-
-    # TODO: if (cpu_shares != 0)  => set the 'cpu.shares' in our cpu cgroup
-
+    base_cgroup = '/sys/fs/cgroup/rubber_docker'
+    
+    with open(os.path.join(base_cgroup, 'cgroup.subtree_control'), 'w') as f:
+        f.write('+cpu')
+    cgroup_path = '/sys/fs/cgroup/rubber_docker/' + container_id
+    os.makedirs(cgroup_path, exist_ok=True)
+    if cpu_shares != 0:
+        weight = max(1, min(10000, int(cpu_shares / 1024 * 100)))
+        with open(os.path.join(cgroup_path, 'cpu.weight'), 'w') as f:
+            f.write(str(weight))
+    with open(os.path.join(cgroup_path, 'cgroup.procs'), 'w') as f:
+        f.write('0')
+    
     linux.sethostname(container_id)  # change hostname to container_id
 
     linux.mount(None, '/', None, linux.MS_PRIVATE | linux.MS_REC, None)
@@ -137,8 +145,7 @@ def run(cpu_shares, image_name, image_dir, container_dir, command):
 
     # linux.clone(callback, flags, callback_args) is modeled after the Glibc
     # version. see: "man 2 clone"
-    flags = (linux.CLONE_NEWPID | linux.CLONE_NEWNS | linux.CLONE_NEWUTS |
-             linux.CLONE_NEWNET)
+    flags = (linux.CLONE_NEWPID | linux.CLONE_NEWNS | linux.CLONE_NEWUTS | linux.CLONE_NEWNET)
     callback_args = (command, image_name, image_dir, container_id,
                      container_dir, cpu_shares)
     pid = linux.clone(contain, flags, callback_args)
