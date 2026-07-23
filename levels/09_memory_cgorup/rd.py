@@ -96,29 +96,43 @@ def _create_mounts(new_root):
 
 
 def _setup_cpu_cgroup(container_id, cpu_shares):
-    CPU_CGROUP_BASEDIR = '/sys/fs/cgroup/cpu'
-    container_cpu_cgroup_dir = os.path.join(
-        CPU_CGROUP_BASEDIR, 'rubber_docker', container_id)
+    base_cgroup = '/sys/fs/cgroup/rubber_docker'
+    
+    with open(os.path.join(base_cgroup, 'cgroup.subtree_control'), 'w') as f:
+        f.write('+cpu +memory')
+    cgroup_path = '/sys/fs/cgroup/rubber_docker/' + container_id
+    os.makedirs(cgroup_path, exist_ok=True)
+    if cpu_shares != 0:
+        weight = max(1, min(10000, int(cpu_shares / 1024 * 100)))
+        with open(os.path.join(cgroup_path, 'cpu.weight'), 'w') as f:
+            f.write(str(weight))
+    with open(os.path.join(cgroup_path, 'cgroup.procs'), 'w') as f:
+        f.write('0')
 
-    # Insert the container to new cpu cgroup named 'rubber_docker/container_id'
-    if not os.path.exists(container_cpu_cgroup_dir):
-        os.makedirs(container_cpu_cgroup_dir)
-    tasks_file = os.path.join(container_cpu_cgroup_dir, 'tasks')
-    open(tasks_file, 'w').write(str(os.getpid()))
+def _setup_memory_cgroup(container_id, memory, memory_swap):
+    base = '/sys/fs/cgroup/rubber_docker'
+    os.makedirs(base, exist_ok=True)
+    with open(os.path.join(base, 'cgroup.subtree_control'), 'w') as f:
+        f.write('+cpu +memory')
+    cgroup_path = os.path.join(base, container_id)
+    os.makedirs(cgroup_path, exist_ok=True)
 
-    # If (cpu_shares != 0)  => set the 'cpu.shares' in our cpu cgroup
-    if cpu_shares:
-        cpu_shares_file = os.path.join(container_cpu_cgroup_dir, 'cpu.shares')
-        open(cpu_shares_file, 'w').write(str(cpu_shares))
+    if memory is not None:
+        with open(os.path.join(cgroup_path, 'memory.max'), 'w') as f:
+            f.write(str(memory))
+    
+    if memory_swap is not None:
+        with open(os.path.join(cgroup_path, 'memory.swap.max'), 'w') as f:
+            f.write(str(memory_swap))
+    
+    with open(os.path.join(cgroup_path, 'cgroup.procs'), 'w') as f:
+        f.write('0')
 
 
 def contain(command, image_name, image_dir, container_id, container_dir,
             cpu_shares, memory, memory_swap):
     _setup_cpu_cgroup(container_id, cpu_shares)
-
-    # TODO: similarly to the CPU cgorup, add Memory cgroup support here
-    #       setup memory -> memory.limit_in_bytes,
-    #       memory_swap -> memory.memsw.limit_in_bytes if they are not None
+    _setup_memory_cgroup(container_id, memory, memory_swap)
 
     linux.sethostname(container_id)  # Change hostname to container_id
 
