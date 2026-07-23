@@ -34,25 +34,25 @@ def create_container_root(image_name, image_dir, container_id, container_dir):
     image_path = _get_image_path(image_name, image_dir)
     assert os.path.exists(image_path), "unable to locate image %s" % image_name
 
-    # TODO: Instead of creating the container_root and extracting to it,
-    #       create an images_root.
-    # keep only one rootfs per image and re-use it
-    container_root = _get_container_path(container_id, container_dir, 'rootfs')
-
-    if not os.path.exists(container_root):
-        os.makedirs(container_root)
+    image_root = os.path.join(image_dir, image_name, 'rootfs')
+    if not os.path.exists(image_root):
+        os.makedirs(image_root)
         with tarfile.open(image_path) as t:
-            # Fun fact: tar files may contain *nix devices! *facepalm*
             members = [m for m in t.getmembers()
                        if m.type not in (tarfile.CHRTYPE, tarfile.BLKTYPE)]
-            t.extractall(container_root, members=members)
+            t.extractall(image_root, members=members)
+    
+    container_cow_rw = _get_container_path(container_id, container_dir, 'cow_rw')
+    container_cow_workdir = _get_container_path(container_id, container_dir, 'cow_workdir')
+    container_merged = _get_container_path(container_id, container_dir, 'merged')
 
-    # TODO: create directories for copy-on-write (uppperdir), overlay workdir,
-    #       and a mount point
+    for d in [container_cow_rw, container_cow_workdir, container_merged]:
+        os.makedirs(d, exist_ok=True)
 
-    # TODO: mount the overlay (HINT: use the MS_NODEV flag to mount)
+    mount_options = f'lowerdir={image_root},upperdir={container_cow_rw},workdir={container_cow_workdir}'
+    linux.mount('overlay', container_merged, 'overlay', linux.MS_NODEV, mount_options)
 
-    return container_root  # return the mountpoint for the mounted overlayfs
+    return container_merged
 
 
 @click.group()
