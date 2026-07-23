@@ -19,7 +19,7 @@ import uuid
 import click
 import os
 import traceback
-
+import stat
 
 def _get_image_path(image_name, image_dir, image_suffix='tar'):
     return os.path.join(image_dir, os.extsep.join([image_name, image_suffix]))
@@ -65,10 +65,10 @@ def contain(command, image_name, image_dir, container_id, container_dir):
         linux.mount('devpts', devpts_path, 'devpts', 0, '')
     for i, dev in enumerate(['stdin', 'stdout', 'stderr']):
         os.symlink('/proc/self/fd/%d' % i, os.path.join(new_root, 'dev', dev))
-    os.mknod(os.path.join(new_root, 'dev', 'null'), 0o666 | os.stat.S_IFCHR, os.makedev(1, 3))
-    os.mknod(os.path.join(new_root, 'dev', 'zero'), 0o666 | os.stat.S_IFCHR, os.makedev(1, 5))
-    os.mknod(os.path.join(new_root, 'dev', 'random'), 0o666 | os.stat.S_IFCHR, os.makedev(1, 8))
-    os.mknod(os.path.join(new_root, 'dev', 'urandom'), 0o666 | os.stat.S_IFCHR, os.makedev(1, 9))
+    os.mknod(os.path.join(new_root, 'dev', 'null'), 0o666 | stat.S_IFCHR, os.makedev(1, 3))
+    os.mknod(os.path.join(new_root, 'dev', 'zero'), 0o666 | stat.S_IFCHR, os.makedev(1, 5))
+    os.mknod(os.path.join(new_root, 'dev', 'random'), 0o666 | stat.S_IFCHR, os.makedev(1, 8))
+    os.mknod(os.path.join(new_root, 'dev', 'urandom'), 0o666 | stat.S_IFCHR, os.makedev(1, 9))
 
     os.chroot(new_root)
     os.chdir('/')
