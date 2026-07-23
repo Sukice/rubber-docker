@@ -40,8 +40,8 @@ def create_container_root(image_name, image_dir, container_id, container_dir):
     if not os.path.exists(container_root):
         os.makedirs(container_root)
 
-    # TODO: uncomment (why?)
-    # linux.mount('tmpfs', container_root, 'tmpfs', 0, None)
+    # Mount a tmpfs on the container root so that we can pivot_root into it
+    linux.mount('tmpfs', container_root, 'tmpfs', 0, None)
 
     with tarfile.open(image_path) as t:
         # Fun fact: tar files may contain *nix devices! *facepalm*
@@ -80,8 +80,7 @@ def contain(command, image_name, image_dir, container_id, container_dir):
                   'CAP_SYS_ADMIN capability (i.e. you probably want to retry '
                   'this with sudo)')
         raise e
-
-    # TODO: we added MS_REC here. wanna guess why?
+    # Make sure that mounts are private, so that we don't propagate mount events to the host
     linux.mount(None, '/', None, linux.MS_PRIVATE | linux.MS_REC, None)
 
     new_root = create_container_root(
@@ -102,11 +101,13 @@ def contain(command, image_name, image_dir, container_id, container_dir):
 
     makedev(os.path.join(new_root, 'dev'))
 
-    os.chroot(new_root)  # TODO: replace with pivot_root
-
+    old_root = os.path.join(new_root, 'old_root')
+    os.makedirs(old_root)
+    linux.pivot_root(new_root, old_root)
     os.chdir('/')
-
-    # TODO: umount2 old root (HINT: see MNT_DETACH in man 2 umount)
+    linux.umount2('/old_root', linux.MNT_DETACH)
+    os.rmdir('/old_root')
+    
 
     os.execvp(command[0], command)
 
